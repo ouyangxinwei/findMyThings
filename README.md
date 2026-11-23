@@ -45,3 +45,7 @@ GitHub Pagesでも公開できます。GPSの利用にはブラウザの位置�
 ## バージョン
 
 現在のバージョンは [version.json](./version.json) を参照してください。
+
+## GitHub Pages 初回設定
+
+初回のみ、リポジトリの **Settings → Pages → Build and deployment → Source** で **GitHub Actions** を選択してください。その後、`main` への push ごとに自動デプロイされます。
