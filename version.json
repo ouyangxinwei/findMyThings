@@ -1,12 +1,13 @@
 {
   "name": "Find My Things",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "stage": "MVP",
   "released_at": "2026-11-23",
-  "description": "Nearby convenience store and supermarket finder",
+  "description": "Nearby finder for user-selected place and business categories in Japan",
   "changes": [
-    "Extended each Overpass endpoint request timeout from 18 to 45 seconds",
-    "Simplified the store query using the nwr selector",
-    "Added response remark detection and clearer endpoint timing and error logs"
+    "Added selectable categories for convenience stores and supermarkets",
+    "Added logistics offices, freight transport offices, courier services, post depots, and post offices",
+    "Generalized result labels and Overpass queries for the selected category",
+    "Updated README with supported categories and OpenStreetMap tagging limitations"
   ]
 }
