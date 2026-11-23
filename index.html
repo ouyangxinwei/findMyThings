@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f5f7f4">
+  <title>Find My Things | 近くのお店を探す</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#202820;background:#f5f7f4;font-synthesis:none}
+    *{box-sizing:border-box}body{margin:0}main{width:min(760px,100% - 28px);margin:34px auto 60px}
+    header{margin-bottom:22px}h1{font-size:clamp(1.7rem,5vw,2.3rem);margin:0 0 6px;letter-spacing:-.04em}
+    header p,.muted{color:#68736a;margin:0;line-height:1.6}.panel{background:#fff;border:1px solid #e3e9e1;border-radius:16px;padding:20px;margin:14px 0;box-shadow:0 4px 16px #243b2410}
+    h2{font-size:1rem;margin:0 0 14px}.row{display:flex;gap:9px;align-items:center}.row>*{min-width:0}
+    input,select,button{font:inherit;border-radius:10px;padding:11px 12px;border:1px solid #d5ddd3}
+    input{width:100%;background:#fff}button{cursor:pointer;background:#244f36;color:white;border-color:#244f36;font-weight:650}
+    button.secondary{background:#fff;color:#244f36}button:disabled{opacity:.55;cursor:wait}.row button{white-space:nowrap}
+    .stack{display:grid;gap:12px}.location{font-size:.9rem;background:#f4f7f2;padding:12px;border-radius:10px;overflow-wrap:anywhere}
+    .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}.actions button{width:100%}
+    .filters{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.filters label{display:flex;align-items:center;gap:7px;font-size:.9rem}.filters select{padding:8px}
+    #status{min-height:24px;font-size:.9rem;color:#58645a;margin-top:10px}.error{color:#b42318!important}
+    .result{padding:14px 0;border-top:1px solid #edf0eb}.result:first-child{border-top:0}.result h3{font-size:1rem;margin:0 0 5px}
+    .meta{font-size:.88rem;color:#657066;line-height:1.55}.distance{font-weight:750;color:#24563a;margin-left:7px;white-space:nowrap}
+    .tag{display:inline-block;font-size:.72rem;background:#eaf3eb;color:#315d3e;padding:3px 7px;border-radius:20px;margin-left:5px}
+    .empty{text-align:center;color:#68736a;padding:24px 8px}.foot{font-size:.78rem;color:#7a847b;line-height:1.6}
+    @media(max-width:520px){main{margin-top:22px}.panel{padding:16px}.actions{grid-template-columns:1fr}.row{align-items:stretch}}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Find My Things <span aria-hidden="true">📍</span></h1>
+    <p>近くのコンビニ・スーパーを、距離の近い順に検索します。</p>
+  </header>
+
+  <section class="panel stack">
+    <div>
+      <h2>1. 検索する場所を指定</h2>
+      <div class="actions">
+        <button id="gpsBtn" type="button">現在地を取得する</button>
+        <button id="demoBtn" class="secondary" type="button">デモ位置を使う（東京駅）</button>
+      </div>
+    </div>
+    <div>
+      <label for="postcode">郵便番号（7桁）</label>
+      <div class="row"><input id="postcode" inputmode="numeric" maxlength="8" placeholder="例：100-0001"><button id="postcodeBtn" type="button">住所を取得</button></div>
+    </div>
+    <div>
+      <label for="address">住所</label>
+      <div class="row"><input id="address" placeholder="例：東京都千代田区丸の内1丁目"><button id="addressBtn" type="button">座標に変換</button></div>
+    </div>
+    <div class="location" id="selectedLocation">位置はまだ設定されていません。</div>
+    <div class="filters">
+      <label for="radius">検索半径</label>
+      <select id="radius"><option value="500">500 m</option><option value="1000" selected>1 km</option><option value="2000">2 km</option></select>
+      <span class="muted" id="coordinateText"></span>
+    </div>
+    <button id="searchBtn" type="button" disabled>周辺のお店を検索</button>
+    <div id="status" role="status" aria-live="polite"></div>
+  </section>
+
+  <section class="panel">
+    <h2>2. 検索結果 <span id="resultCount" class="muted"></span></h2>
+    <div id="results" class="empty">場所を指定して「周辺のお店を検索」を押してください。</div>
+  </section>
+  <p class="foot">店舗情報：OpenStreetMap contributors / 検索：Overpass API。データの登録状況により、実際の店舗が表示されない場合があります。距離は直線距離です。</p>
+</main>
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  let center = null;
+  const setStatus = (message, isError = false) => {
+    $("status").textContent = message;
+    $("status").classList.toggle("error", isError);
+  };
+  const setLocation = (lat, lon, label) => {
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      throw new Error("有効な緯度・経度を取得できませんでした。");
+    }
+    center = { lat, lon, label };
+    $("selectedLocation").textContent = label;
+    $("coordinateText").textContent = lat.toFixed(5) + ", " + lon.toFixed(5);
+    $("searchBtn").disabled = false;
+    $("results").textContent = "検索を開始できます。";
+    $("resultCount").textContent = "";
+  };
+  const withButton = async (button, task) => {
+    button.disabled = true;
+    try { await task(); } catch (error) { setStatus(error.message || "処理に失敗しました。", true); }
+    finally { button.disabled = false; }
+  };
+  const jsonFetch = async (url, options = {}) => {
+    const response = await fetch(url, { ...options, signal: AbortSignal.timeout(25000) });
+    if (!response.ok) throw new Error("APIエラー（HTTP " + response.status + "）。時間をおいて再試行してください。");
+    return response.json();
+  };
+
+  $("gpsBtn").addEventListener("click", () => withButton($("gpsBtn"), async () => {
+    if (!navigator.geolocation) throw new Error("このブラウザは位置情報に対応していません。");
+    setStatus("現在地を取得しています…");
+    const pos = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true, timeout: 15000, maximumAge: 60000
+    }));
+    setLocation(pos.coords.latitude, pos.coords.longitude, "現在地（GPS）");
+    setStatus("現在地を設定しました。");
+  }));
+
+  $("demoBtn").addEventListener("click", () => {
+    setLocation(35.681236, 139.767125, "デモ位置：東京駅（固定座標）");
+    setStatus("デモ位置を設定しました。実際の現在地ではありません。");
+  });
+
+  $("postcodeBtn").addEventListener("click", () => withButton($("postcodeBtn"), async () => {
+    const zip = $("postcode").value.replace(/\D/g, "");
+    if (!/^\d{7}$/.test(zip)) throw new Error("郵便番号は7桁で入力してください。");
+    setStatus("郵便番号を検索しています…");
+    const data = await jsonFetch("https://postcode.teraren.com/postcodes/" + zip + ".json");
+    const address = [data.prefecture, data.city, data.town || data.suburb].filter(Boolean).join("");
+    if (!address) throw new Error("郵便番号に対応する住所が見つかりませんでした。");
+    $("address").value = address;
+    setStatus("住所を取得しました。続けて座標に変換します。");
+    await geocode(address);
+  }));
+
+  async function geocode(address) {
+    if (!address) throw new Error("住所を入力してください。");
+    setStatus("住所を座標に変換しています…");
+    const url = "https://msearch.gsi.go.jp/address-search/AddressSearch?q=" + encodeURIComponent(address);
+    const items = await jsonFetch(url);
+    if (!Array.isArray(items) || !items.length || !items[0].geometry?.coordinates) {
+      throw new Error("住所が見つかりませんでした。もう少し詳しい住所を入力してください。");
+    }
+    const [lon, lat] = items[0].geometry.coordinates;
+    setLocation(lat, lon, "住所：" + (items[0].properties?.title || address));
+    setStatus("住所から位置を設定しました。");
+  }
+  $("addressBtn").addEventListener("click", () => withButton($("addressBtn"), () => geocode($("address").value.trim())));
+
+  function distanceMeters(a, b) {
+    const rad = (v) => v * Math.PI / 180;
+    const dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
+    const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+    return Math.round(6371000 * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x)));
+  }
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[c]);
+  }
+  function renderResults(places) {
+    $("resultCount").textContent = "（" + places.length + "件）";
+    if (!places.length) {
+      $("results").className = "empty";
+      $("results").textContent = "この範囲では店舗が見つかりませんでした。検索半径を広げてお試しください。";
+      return;
+    }
+    $("results").className = "";
+    $("results").innerHTML = places.map((p, i) => {
+      const kind = p.kind === "supermarket" ? "スーパー" : "コンビニ";
+      const address = p.address || "住所情報なし";
+      const query = encodeURIComponent(p.name + " " + address);
+      return '<article class="result"><h3>' + (i + 1) + ". " + escapeHtml(p.name) +
+        '<span class="distance">' + p.distance + ' m</span><span class="tag">' + kind + '</span></h3>' +
+        '<div class="meta">' + escapeHtml(address) + '</div>' +
+        '<div class="meta"><a target="_blank" rel="noopener noreferrer" href="https://www.openstreetmap.org/search?query=' + query + '">OpenStreetMapで見る</a></div></article>';
+    }).join("");
+  }
+
+  $("searchBtn").addEventListener("click", () => withButton($("searchBtn"), async () => {
+    if (!center) throw new Error("先に検索する場所を指定してください。");
+    const radius = Number($("radius").value);
+    const { lat, lon } = center;
+    const query = '[out:json][timeout:25];(node["shop"~"^(convenience|supermarket)$"](around:' + radius + ',' + lat + ',' + lon + ');way["shop"~"^(convenience|supermarket)$"](around:' + radius + ',' + lat + ',' + lon + ');relation["shop"~"^(convenience|supermarket)$"](around:' + radius + ',' + lat + ',' + lon + '););out center tags;';
+    setStatus("OpenStreetMapのデータを検索しています…");
+    $("results").className = "empty";
+    $("results").textContent = "検索中…";
+    const url = "https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query);
+    const data = await jsonFetch(url);
+    const unique = new Map();
+    for (const item of (data.elements || [])) {
+      const tags = item.tags || {};
+      const point = item.type === "node" ? item : item.center;
+      if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lon)) continue;
+      const kind = tags.shop === "supermarket" ? "supermarket" : "convenience";
+      const name = tags.name || (kind === "supermarket" ? "名称未登録のスーパー" : "名称未登録のコンビニ");
+      const key = item.type + "/" + item.id;
+      const address = [tags["addr:province"], tags["addr:city"], tags["addr:suburb"], tags["addr:street"], tags["addr:housenumber"]].filter(Boolean).join("");
+      unique.set(key, { name, kind, address, lat: point.lat, lon: point.lon, distance: distanceMeters(center, point) });
+    }
+    const places = [...unique.values()].filter(p => p.distance <= radius).sort((a, b) => a.distance - b.distance);
+    renderResults(places);
+    setStatus("検索が完了しました。店舗データはOpenStreetMapの登録内容に基づきます。");
+  }));
+})();
+</script>
+</body>
+</html>
