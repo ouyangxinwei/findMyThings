@@ -169,6 +169,40 @@
   }
   $("addressBtn").addEventListener("click", () => withButton($("addressBtn"), () => geocode($("address").value.trim())));
 
+  async function fetchOverpass(query) {
+    // Try independent public Overpass instances. A single instance may be busy
+    // or rate-limited, which should not leave the result panel stuck loading.
+    const endpoints = [
+      "https://overpass-api.de/api/interpreter",
+      "https://overpass.kumi.systems/api/interpreter"
+    ];
+    let lastError = null;
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+          body: new URLSearchParams({ data: query }),
+          signal: AbortSignal.timeout(18000)
+        });
+        if (!response.ok) {
+          throw new Error("HTTP " + response.status);
+        }
+        const data = await response.json();
+        if (!data || !Array.isArray(data.elements)) {
+          throw new Error("APIから想定外のデータが返されました");
+        }
+        return data;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    const reason = lastError?.name === "TimeoutError" || lastError?.name === "AbortError"
+      ? "接続がタイムアウトしました"
+      : (lastError?.message || "通信エラー");
+    throw new Error(reason);
+  }
+
   function distanceMeters(a, b) {
     const rad = (v) => v * Math.PI / 180;
     const dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
@@ -205,8 +239,16 @@
     setStatus("OpenStreetMapのデータを検索しています…");
     $("results").className = "empty";
     $("results").textContent = "検索中…";
-    const url = "https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query);
-    const data = await jsonFetch(url);
+    let data;
+    try {
+      data = await fetchOverpass(query);
+    } catch (error) {
+      $("results").className = "empty";
+      $("results").textContent = "店舗データを取得できませんでした。時間をおいて、もう一度検索してください。（" + (error.message || "通信エラー") + "）";
+      $("resultCount").textContent = "";
+      setStatus("検索に失敗しました。別の検索半径でもお試しください。", true);
+      return;
+    }
     const unique = new Map();
     for (const item of (data.elements || [])) {
       const tags = item.tags || {};
