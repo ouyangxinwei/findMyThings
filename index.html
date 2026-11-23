@@ -118,8 +118,17 @@
     const address = [data.prefecture, data.city, data.town || data.suburb].filter(Boolean).join("");
     if (!address) throw new Error("郵便番号に対応する住所が見つかりませんでした。");
     $("address").value = address;
-    setStatus("住所を取得しました。続けて座標に変換します。");
-    await geocode(address);
+    // Post-kun currently also returns coordinates for many postal codes.
+    // Use them directly when available; fall back to GSI geocoding otherwise.
+    const postalLat = Number(data.location?.latitude);
+    const postalLon = Number(data.location?.longitude);
+    if (data.location && Number.isFinite(postalLat) && Number.isFinite(postalLon)) {
+      setLocation(postalLat, postalLon, "郵便番号：" + address);
+      setStatus("郵便番号から住所と座標を取得しました。");
+    } else {
+      setStatus("住所を取得しました。続けて座標に変換します。");
+      await geocode(address);
+    }
   }));
 
   async function geocode(address) {
