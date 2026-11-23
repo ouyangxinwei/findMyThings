@@ -34,7 +34,7 @@
 <main>
   <header>
     <h1>Find My Things <span aria-hidden="true">📍</span></h1>
-    <p>近くのコンビニ・スーパーを、距離の近い順に検索します。</p>
+    <p>指定した種類の施設・お店を、近い順に検索します。</p>
   </header>
 
   <section class="panel stack">
@@ -55,17 +55,27 @@
     </div>
     <div class="location" id="selectedLocation">位置はまだ設定されていません。</div>
     <div class="filters">
+      <label for="category">検索する種類</label>
+      <select id="category">
+        <option value="convenience">コンビニ</option>
+        <option value="supermarket">スーパー</option>
+        <option value="logistics">物流会社</option>
+        <option value="transport">貨物・運送会社</option>
+        <option value="courier">宅配・配送会社</option>
+        <option value="post_depot">郵便・荷物の配送センター</option>
+        <option value="post_office">郵便局</option>
+      </select>
       <label for="radius">検索半径</label>
       <select id="radius"><option value="500">500 m</option><option value="1000" selected>1 km</option><option value="2000">2 km</option><option value="5000">5 km</option></select>
       <span class="muted" id="coordinateText"></span>
     </div>
-    <button id="searchBtn" type="button" disabled>周辺のお店を検索</button>
+    <button id="searchBtn" type="button" disabled>周辺を検索</button>
     <div id="status" role="status" aria-live="polite"></div>
   </section>
 
   <section class="panel">
     <h2>2. 検索結果 <span id="resultCount" class="muted"></span></h2>
-    <div id="results" class="empty">場所を指定して「周辺のお店を検索」を押してください。</div>
+    <div id="results" class="empty">場所と種類を指定して「周辺を検索」を押してください。</div>
   </section>
   <details class="log-panel" id="logPanel" open>
     <summary>実行ログ / Console</summary>
@@ -201,6 +211,16 @@
   }
   $("addressBtn").addEventListener("click", () => withButton($("addressBtn"), () => geocode($("address").value.trim())));
 
+  const categories = {
+    convenience: { label: "コンビニ", selectors: ['["shop"="convenience"]'] },
+    supermarket: { label: "スーパー", selectors: ['["shop"="supermarket"]'] },
+    logistics: { label: "物流会社", selectors: ['["office"="logistics"]'] },
+    transport: { label: "貨物・運送会社", selectors: ['["office"="transport"]'] },
+    courier: { label: "宅配・配送会社", selectors: ['["office"="courier"]'] },
+    post_depot: { label: "郵便・荷物の配送センター", selectors: ['["amenity"="post_depot"]'] },
+    post_office: { label: "郵便局", selectors: ['["amenity"="post_office"]'] }
+  };
+
   async function fetchOverpass(query) {
     // Public Overpass servers are shared and can be slow under load.
     // Try endpoints sequentially and give each enough time to respond.
@@ -267,7 +287,7 @@
     }
     $("results").className = "";
     $("results").innerHTML = places.map((p, i) => {
-      const kind = p.kind === "supermarket" ? "スーパー" : "コンビニ";
+      const kind = p.categoryLabel || "施設";
       const address = p.address || "住所情報なし";
       const query = encodeURIComponent(p.name + " " + address);
       return '<article class="result"><h3>' + (i + 1) + ". " + escapeHtml(p.name) +
@@ -280,9 +300,15 @@
   $("searchBtn").addEventListener("click", () => withButton($("searchBtn"), async () => {
     if (!center) throw new Error("先に検索する場所を指定してください。");
     const radius = Number($("radius").value);
+    const categoryKey = $("category").value;
+    const category = categories[categoryKey];
+    if (!category) throw new Error("検索する種類を選択してください。");
     const { lat, lon } = center;
-    const query = '[out:json][timeout:40];nwr["shop"~"^(convenience|supermarket)$"](around:' + radius + ',' + lat + ',' + lon + ');out center tags;';
-    log("店舗検索を開始。半径=" + radius + "m、中心=" + lat + "," + lon);
+    const selectors = category.selectors.map(selector =>
+      "nwr" + selector + "(around:" + radius + "," + lat + "," + lon + ");"
+    ).join("");
+    const query = "[out:json][timeout:40];(" + selectors + ");out center tags;";
+    log("施設検索を開始。種類=" + category.label + "、半径=" + radius + "m、中心=" + lat + "," + lon);
     setStatus("OpenStreetMapのデータを検索しています…");
     $("results").className = "empty";
     $("results").textContent = "検索中…";
@@ -302,16 +328,15 @@
       const tags = item.tags || {};
       const point = item.type === "node" ? item : item.center;
       if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lon)) continue;
-      const kind = tags.shop === "supermarket" ? "supermarket" : "convenience";
-      const name = tags.name || (kind === "supermarket" ? "名称未登録のスーパー" : "名称未登録のコンビニ");
+      const name = tags.name || ("名称未登録の" + category.label);
       const key = item.type + "/" + item.id;
       const address = [tags["addr:province"], tags["addr:city"], tags["addr:suburb"], tags["addr:street"], tags["addr:housenumber"]].filter(Boolean).join("");
-      unique.set(key, { name, kind, address, lat: point.lat, lon: point.lon, distance: distanceMeters(center, point) });
+      unique.set(key, { name, categoryLabel: category.label, address, lat: point.lat, lon: point.lon, distance: distanceMeters(center, point) });
     }
     const places = [...unique.values()].filter(p => p.distance <= radius).sort((a, b) => a.distance - b.distance);
     renderResults(places);
     log("検索完了: " + places.length + "件取得（半径 " + radius + "m）", "SUCCESS");
-    setStatus("検索が完了しました。店舗データはOpenStreetMapの登録内容に基づきます。");
+    setStatus("検索が完了しました。施設データはOpenStreetMapの登録内容に基づきます。");
   }));
 })();
 </script>
