@@ -1,11 +1,12 @@
 {
   "name": "Find My Things",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "stage": "MVP",
   "released_at": "2026-11-23",
   "description": "Nearby convenience store and supermarket finder",
   "changes": [
-    "Added a fallback Overpass API endpoint",
-    "Show a clear error instead of leaving search results stuck on loading"
+    "Added a simple on-page execution log for location, postcode, geocoding and store search",
+    "Added 5 km search radius",
+    "Log API endpoint attempts and errors for easier troubleshooting"
   ]
 }
