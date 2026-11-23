@@ -1,12 +1,12 @@
 {
   "name": "Find My Things",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "stage": "MVP",
   "released_at": "2026-11-23",
   "description": "Nearby convenience store and supermarket finder",
   "changes": [
-    "Added a simple on-page execution log for location, postcode, geocoding and store search",
-    "Added 5 km search radius",
-    "Log API endpoint attempts and errors for easier troubleshooting"
+    "Extended each Overpass endpoint request timeout from 18 to 45 seconds",
+    "Simplified the store query using the nwr selector",
+    "Added response remark detection and clearer endpoint timing and error logs"
   ]
 }
