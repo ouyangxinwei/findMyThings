@@ -108,8 +108,10 @@
   };
   const withButton = async (button, task) => {
     button.disabled = true;
-    try { await task(); } catch (error) { setStatus(error.message || "処理に失敗しました。", true); }
-    finally { button.disabled = false; }
+    try { await task(); } catch (error) {
+      log((error.message || "処理に失敗しました。"), "ERROR");
+      setStatus(error.message || "処理に失敗しました。", true);
+    } finally { button.disabled = false; }
   };
   const jsonFetch = async (url, options = {}) => {
     const response = await fetch(url, { ...options, signal: AbortSignal.timeout(25000) });
