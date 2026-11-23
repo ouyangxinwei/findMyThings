@@ -1,7 +1,11 @@
 {
   "name": "Find My Things",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "stage": "MVP",
   "released_at": "2026-11-23",
-  "description": "Nearby convenience store and supermarket finder"
+  "description": "Nearby convenience store and supermarket finder",
+  "changes": [
+    "Added a fallback Overpass API endpoint",
+    "Show a clear error instead of leaving search results stuck on loading"
+  ]
 }
