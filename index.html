@@ -127,11 +127,35 @@
     setStatus("住所を座標に変換しています…");
     const url = "https://msearch.gsi.go.jp/address-search/AddressSearch?q=" + encodeURIComponent(address);
     const items = await jsonFetch(url);
-    if (!Array.isArray(items) || !items.length || !items[0].geometry?.coordinates) {
+    if (!Array.isArray(items) || !items.length) {
       throw new Error("住所が見つかりませんでした。もう少し詳しい住所を入力してください。");
     }
-    const [lon, lat] = items[0].geometry.coordinates;
-    setLocation(lat, lon, "住所：" + (items[0].properties?.title || address));
+    // GSI results are not always returned in relevance order. Pick the title
+    // with the longest common substring against the requested address.
+    const commonLength = (a, b) => {
+      let previous = new Array(b.length + 1).fill(0), best = 0;
+      for (let i = 1; i <= a.length; i++) {
+        const current = new Array(b.length + 1).fill(0);
+        for (let j = 1; j <= b.length; j++) {
+          if (a[i - 1] === b[j - 1]) {
+            current[j] = previous[j - 1] + 1;
+            best = Math.max(best, current[j]);
+          }
+        }
+        previous = current;
+      }
+      return best;
+    };
+    const normalized = address.replace(/[\\s　]/g, "");
+    const ranked = items.filter(item => item.geometry?.coordinates?.length === 2)
+      .map(item => ({ item, score: commonLength(normalized, String(item.properties?.title || "").replace(/[\\s　]/g, "")) }))
+      .sort((a, b) => b.score - a.score);
+    if (!ranked.length || ranked[0].score < 2) {
+      throw new Error("住所に一致する座標が見つかりませんでした。もう少し詳しい住所を入力してください。");
+    }
+    const selected = ranked[0].item;
+    const [lon, lat] = selected.geometry.coordinates;
+    setLocation(lat, lon, "住所：" + (selected.properties?.title || address));
     setStatus("住所から位置を設定しました。");
   }
   $("addressBtn").addEventListener("click", () => withButton($("addressBtn"), () => geocode($("address").value.trim())));
